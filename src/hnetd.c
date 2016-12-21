@@ -19,6 +19,7 @@
 #include <syslog.h>
 #include <fcntl.h>
 
+#include "hncp_constellation.h"
 #include "hnetd_time.h"
 #include "hncp_pa.h"
 #include "hncp_sd.h"
@@ -104,10 +105,15 @@ int usage() {
 
 int main(__unused int argc, char *argv[])
 {
+	FILE* f = fopen("/tmp/hnet-log", "a");
+	fprintf(f, "Beginning of 'hnetd'\n");
+	fclose(f);
+
 	hncp h;
 	int c;
 	hncp_iface_user_s hiu;
 	hncp_pa hncp_pa;
+	hncp_constellation hncp_constellation;
 	hncp_sd_params_s sd_params;
 	hncp_multicast_params_s multicast_params;
 #ifdef DTLS
@@ -485,6 +491,12 @@ int main(__unused int argc, char *argv[])
 
 		closelog();
 		openlog("hnetd", LOG_PID, LOG_DAEMON);
+	}
+
+	/* Init Constellation project */
+	if(!(hncp_constellation = hncp_constellation_create(h))) {
+		L_ERR("Unable to initialize Constellation");
+		return 68;
 	}
 
 	uloop_run();

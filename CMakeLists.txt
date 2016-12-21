@@ -80,6 +80,8 @@ endif(${DTLS})
 endif(${BACKEND} MATCHES "openwrt")
 
 # hnetd and it's various pieces
+add_library(L_CONST OBJECT src/hncp_constellation.c)
+set(CONST $<TARGET_OBJECTS:L_CONST>)
 add_library(L_HT OBJECT src/hnetd_time.c)
 set(HT $<TARGET_OBJECTS:L_HT>)
 add_library(L_PX OBJECT src/prefix.c)
@@ -102,7 +104,7 @@ add_library(L_HNCP_GLUE OBJECT src/hncp.c src/hncp_pa.c src/hncp_sd.c src/hncp_l
 set(HNCP_WITH_GLUE ${DNCP_WITH_PROTO} $<TARGET_OBJECTS:L_HNCP_GLUE>)
 add_library(L_HNCP_IO OBJECT src/hncp_io.c ${DTLS_SOURCE} src/udp46.c)
 set(HNCP_IO $<TARGET_OBJECTS:L_HNCP_IO>)
-set(HNCP ${HNCP_WITH_GLUE} ${HNCP_IO}  ${TRUST_SOURCE})
+set(HNCP ${HNCP_WITH_GLUE} ${HNCP_IO} ${CONST} ${TRUST_SOURCE})
 add_executable(hnetd ${HNCP} ${HT} src/hncp_routing.c src/hncp_dump.c src/hnetd.c src/iface.c src/pd.c src/ src/hncp_wifi.c ${BACKEND_SOURCE} ${TUNNEL_SOURCE})
 target_link_libraries(hnetd ubox resolv blobmsg_json ${BACKEND_LINK} ${DTLS_LINK})
 install(TARGETS hnetd DESTINATION sbin/)
