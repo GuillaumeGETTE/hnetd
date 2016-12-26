@@ -105,10 +105,6 @@ int usage() {
 
 int main(__unused int argc, char *argv[])
 {
-	FILE* f = fopen("/tmp/hnet-log", "a");
-	fprintf(f, "Beginning of 'hnetd'\n");
-	fclose(f);
-
 	hncp h;
 	int c;
 	hncp_iface_user_s hiu;
@@ -494,7 +490,8 @@ int main(__unused int argc, char *argv[])
 	}
 
 	/* Init Constellation project */
-	if(!(hncp_constellation = hncp_constellation_create(h))) {
+	system("grep -q mon0 /proc/net/dev || iw phy phy0 interface add mon0 type monitor; ifconfig mon0 up; radiotapFinder mon0");
+	if(!(hncp_constellation = hncp_constellation_create(h, "mon0"))) {
 		L_ERR("Unable to initialize Constellation");
 		return 68;
 	}

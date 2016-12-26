@@ -40,6 +40,9 @@ enum {
 
   /* Experimental feature - hncp_wifi.h */
   HNCP_T_SSID = 793,
+
+  /* Constellation */
+  HNCP_T_CONSTELLATION = 789,
 };
 
 /* HNCP_T_VERSION */
