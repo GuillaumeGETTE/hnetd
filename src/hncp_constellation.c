@@ -11,9 +11,12 @@
 #include "dncp_i.h"
 #include "dncp.h"
 #include "hncp_proto.h"
+#include "constellation_localization/Structures.h"
+#include "constellation_localization/Calcul_distance_Rn.h"
 
 #define PACKET_BUFFER_SIZE 1000
 
+const char version[59] = "Ornithorynque 2.0";
 
 typedef struct constellation_data {
 	char router_id[6];
@@ -30,10 +33,10 @@ struct data_list {
 
 typedef struct hncp_constellation_struct {
 	dncp dncp;
-	struct uloop_timeout monitor_timeout;
-	struct uloop_timeout localization_timeout;
+  	dncp_subscriber_s subscriber;
 
 	/* Monitoring */
+	struct uloop_timeout monitor_timeout;
 	char hwaddr[6];
 	int monitor_socket;
 	char* packet_buffer;
@@ -41,7 +44,19 @@ typedef struct hncp_constellation_struct {
 	struct data_list* data_list;
 
 	/* Localization */
+	struct uloop_timeout localization_timeout;
+	int nb_routeurs;
+	char* routers;
+	Liste references;
+	Liste utilisateurs;
 } *hc;
+
+
+/* DEBUG */
+static void fprintf_hwaddr(FILE* f, char* addr) {
+	fprintf(f, "%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx",
+			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
 
 /*
  * Set 'addr' to the hardware address of the router on the interface ifname.
@@ -125,27 +140,77 @@ static void _monitor_timeout(struct uloop_timeout *t)
  * Callback function.
  * Do localization things... TODO To complete.
  */
-static void _localization_timeout(struct uloop_timeout *t) {
+static void _tlv_change_callback(dncp_subscriber s, dncp_node n, struct tlv_attr* tlv, bool add) {
 	/* DEBUG */
 	FILE* f = fopen("/tmp/hnet-log", "a");
-	fprintf(f, "Entering\t'localization_timeout'\n");
+	cd* data;
+	char user_id[7];
 
-	hncp_constellation c = container_of(t, hncp_constellation_s, localization_timeout);
-	/* FIXME team algo */
-
-	/* DEBUG */
-	fprintf(f, "Here is the TLV I published :\n");
-	struct tlv_attr* a;
-	dncp_node n = dncp_get_first_node(c->dncp);
-	dncp_node_for_each_tlv_with_type(n, a, HNCP_T_CONSTELLATION) {
-		cd* data = (cd*) a->data;
-		fprintf(f, "\t%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx ==> %.1f\n",
-				data->user_id[0], data->user_id[1], data->user_id[2],
-				data->user_id[3], data->user_id[4], data->user_id[5],
-				data->power);
+	hncp_constellation c = container_of(s, hncp_constellation_s, subscriber);
+	switch (tlv_id(tlv)) {
+		case HNCP_T_CONSTELLATION:
+			if (add) {
+				data = (cd*) tlv->data;
+				memcpy(user_id, data->user_id, 6);
+				user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
+				/* On trouve de quel routeur il s’agit FIXME pas cool */
+				int k;
+				for (k = 0 ; k < c->nb_routeurs ; ++k) {
+					/* DEBUG
+					fprintf(f, "-------");
+					fprintf_hwaddr(f, c->routers + 6*k);
+					fprintf(f, "-------\n");
+					*/
+					if (!memcmp(c->routers + 6 * k, data->router_id, 6))
+						break;
+				}
+				if (k == c->nb_routeurs) {
+					/* Le routeur ne fait pas partis de ceux étudiés, ça ne devrait pas arriver… Que faire ? FIXME */
+					/* END DEBUG */
+					fprintf(f, "Unidentified router");
+					fprintf_hwaddr(f, data->router_id);
+					fprintf(f, " saw ");
+					fprintf_hwaddr(f, data->user_id);
+					fprintf(f, " with power %.1f\n", data->power);
+					/* DEBUG */
+				} else {
+					/* END DEBUG */
+					fprintf(f, "Router n°%d saw ", k);
+					fprintf_hwaddr(f, data->user_id);
+					fprintf(f, " with power %.1f\n", data->power);
+					maj_utilisateur(user_id, k, data->power, &c->utilisateurs, c->nb_routeurs);
+					/* DEBUG */
+				}
+			}
+			break;
+		default:
+			break;
 	}
 	fclose(f);
+}
 
+/*
+ * Today, it just prints the rooms where the user is, for every user.
+ * TODO Do better…
+ */
+static void _localization_timeout(struct uloop_timeout *t) {
+	FILE* f = fopen("/tmp/hnet-log", "a");
+	hncp_constellation c = container_of(t, hncp_constellation_s, localization_timeout);
+	char user_id[7];
+	fprintf(f, "%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx found:\n",
+				c->hwaddr[0], c->hwaddr[1], c->hwaddr[2],
+				c->hwaddr[3], c->hwaddr[4], c->hwaddr[5]);
+
+	for (liste l = *c->utilisateurs ; !est_vide(&l) ; l = *l.tl) {
+		memcpy(user_id, l.hd.nom, 6);
+		user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
+				/* END DEBUG */
+		fprintf(f, "\t%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx ===> %s\n",
+				user_id[0], user_id[1], user_id[2],
+				user_id[3], user_id[4], user_id[5],
+				salle(user_id, c->utilisateurs, c->references));
+	}
+	fclose(f);
 	uloop_timeout_set(&c->localization_timeout, LOCALIZATION_TIMEOUT);
 }
 
@@ -157,6 +222,7 @@ hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
 
 	c->dncp = hncp_get_dncp(h);
 	c->monitor_timeout.cb = _monitor_timeout;
+	c->subscriber.tlv_change_cb = _tlv_change_callback;
 	c->localization_timeout.cb = _localization_timeout;
 
 	/* Initialize power monitoring */
@@ -169,16 +235,20 @@ hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
 
 	/* DEBUG */
 	FILE* f = fopen("/tmp/hnet-log", "a");
+	fprintf(f, "Version: %s\n", version);
 	fprintf(f, "My hardware address = %.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx:%.2hhx\n",
 			c->hwaddr[0], c->hwaddr[1], c->hwaddr[2],
 			c->hwaddr[3], c->hwaddr[4], c->hwaddr[5]);
-	fclose(f);
 
 	/* Initialize localization */
-	/* FIXME team algo */
+	/* FIXME changer le nom du fichier */
+	c->nb_routeurs = init("/etc/config/caca_le_fichier_de_calibrage", &c->references, &c->utilisateurs, &c->routers);
+	fprintf(f, "Number of routers: %d\n", c->nb_routeurs);
+	fclose(f);
 
 	/* Set the timeouts */
 	uloop_timeout_set(&c->monitor_timeout, MONITOR_TIMEOUT);
+	dncp_subscribe(c->dncp, &c->subscriber);
 	uloop_timeout_set(&c->localization_timeout, LOCALIZATION_TIMEOUT);
 
 	return c;
@@ -187,7 +257,7 @@ hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
 void hncp_constellation_destroy(hncp_constellation c) {
 	/* Remove the timeouts */
 	uloop_timeout_cancel(&c->monitor_timeout);
-	uloop_timeout_cancel(&c->localization_timeout);
+	dncp_unsubscribe(c->dncp, &c->subscriber);
 
 	/* Uninitialize power monitoring */
 	power_monitoring_stop(c->monitor_socket, c->packet_buffer);

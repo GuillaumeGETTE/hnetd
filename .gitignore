@@ -28,3 +28,4 @@ install_manifest.txt
 /cscope.*
 libdncp.a
 libdncp_example
+*.swp

@@ -80,7 +80,7 @@ endif(${DTLS})
 endif(${BACKEND} MATCHES "openwrt")
 
 # hnetd and it's various pieces
-add_library(L_CONST OBJECT src/hncp_constellation.c src/power_monitor.c)
+add_library(L_CONST OBJECT src/hncp_constellation.c src/power_monitor.c src/constellation_localization/Calcul_distance_Rn.c src/constellation_localization/Structures.c)
 set(CONST $<TARGET_OBJECTS:L_CONST>)
 add_library(L_HT OBJECT src/hnetd_time.c)
 set(HT $<TARGET_OBJECTS:L_HT>)
@@ -108,6 +108,7 @@ set(HNCP ${HNCP_WITH_GLUE} ${HNCP_IO} ${CONST} ${TRUST_SOURCE})
 add_executable(hnetd ${HNCP} ${HT} src/hncp_routing.c src/hncp_dump.c src/hnetd.c src/iface.c src/pd.c src/ src/hncp_wifi.c ${BACKEND_SOURCE} ${TUNNEL_SOURCE})
 target_link_libraries(hnetd ubox resolv blobmsg_json ${BACKEND_LINK} ${DTLS_LINK})
 install(TARGETS hnetd DESTINATION sbin/)
+# install(FILES constellation/caca_le_fichier_de_calibrage DESTINATION /tmp)
 
 # Build DNCP static library
 add_library(dncp STATIC src/hnetd_time.c src/prefix.c src/tlv.c src/dncp.c src/dncp_notify.c src/dncp_timeout.c src/dncp_proto.c ${DTLS_SOURCE})
