@@ -12,27 +12,27 @@ int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs,
 
 
 /*
- * Ajoute à la liste des valeurs de références (references) la mesure d'étallonage de la salle (la mesure ajoutée est normalisée).
- * 'nom_salle' n'est pas copié, seul le pointeur l'est.
+ * Ajoute Ã  la liste des valeurs de rÃ©fÃ©rences (references) la mesure d'Ã©tallonage de la salle (la mesure ajoutÃ©e est normalisÃ©e).
+ * 'nom_salle' n'est pas copiÃ©, seul le pointeur l'est.
  */
 void loc_etallonage(char* nom_salle, double* coordonnees_salle, loc_list* references, int nombre_routeurs);
 
 
 /*
- * Met à jour la coordonnée de l'utilisateur pour le routeur passé en argument.
- * Si ce dernier n'existe pas, il est créé et ajouté à la liste des utilisateurs.
- * Le nom est copié.
+ * Met Ã  jour la coordonnÃ©e de l'utilisateur pour le routeur passÃ© en argument.
+ * Si ce dernier n'existe pas, il est crÃ©Ã© et ajoutÃ© Ã  la liste des utilisateurs.
+ * Le nom est copiÃ©.
  */
 void loc_maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coordonnee, loc_list* utilisateurs, int n);
 
 /*
  * Renvoie la salle la plus proche de l'utilisateur avec la distance de R^n.
- * Renvoie NULL si aucune salle n'a été trouvée, ou si l'utilisateur n'a pas été référencé.
+ * Renvoie NULL si aucune salle n'a Ã©tÃ© trouvÃ©e, ou si l'utilisateur n'a pas Ã©tÃ© rÃ©fÃ©rencÃ©.
  */
 loc* loc_salle(char* nom_utilisateur, loc_list utilisateurs, loc_list references);
 
 
 /*
- * Remplace le contenu du fichier par la liste des utilisateurs et leurs coordonnées.
+ * Remplace le contenu du fichier par la liste des utilisateurs et leurs coordonnÃ©es.
  */
 void loc_maj_fichier_coordonnees(char* nom_du_fichier, loc_list utilisateurs, loc_list references);

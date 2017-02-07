@@ -8,7 +8,7 @@
 #include "Structures.h"
 
 /*
- * Calcul des distances dans R^n ou a et b sont les tableaux des coordonnées.
+ * Calcul des distances dans R^n ou a et b sont les tableaux des coordonnÃ©es.
  */
 static double distance(double a[], double b[], int n) {
 	double r = 0;
@@ -21,7 +21,7 @@ static double distance(double a[], double b[], int n) {
 /*
  * Convertit des valeurs des dBm vers des milliWatts, puis les normalise selon
  * la norme 2. Prend les valeurs en dBm de 'dBm' et les convertit en puissance
- * normalisée dans 'power'. 'n' = tailles des tableaux en entrée.
+ * normalisÃ©e dans 'power'. 'n' = tailles des tableaux en entrÃ©e.
  */
 static void dBm_to_power_norm(double* dBm, double* power, int n) {
 	int i;
@@ -49,7 +49,7 @@ int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs,
 	f = fopen(chemin_fichier, "r");
 	fscanf(f, "%d %d", &nb_routeurs, &nb_salles);
 
-	/* On récupère les routeurs. */
+	/* On rÃ©cupÃ¨re les routeurs. */
 	routeurs = malloc(nb_routeurs * 6); // 6 = taille d'une addresse mac
 	*liste_routeurs = routeurs;
 	for (k = 0 ; k < nb_routeurs ; ++k) {
@@ -59,7 +59,7 @@ int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs,
 		routeurs += 6;
 	}
 
-	/* On récupère ensuite les informations des salles. */
+	/* On rÃ©cupÃ¨re ensuite les informations des salles. */
 	*references = NULL;
 	coordonnees = malloc(nb_routeurs * sizeof(double));
 	for (i = 0 ; i < nb_salles ; ++i) {
@@ -90,13 +90,13 @@ void loc_etallonage(char* nom_salle, double* coordonnees_salle, loc_list* refere
 void loc_maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coordonnee, loc_list* utilisateurs, int nb_routeurs) {
 	if (*utilisateurs != NULL) {
 		if (!strcmp(nom_utilisateur,(*utilisateurs)->hd.nom))
-			/* L'utilisateur est présent dans la liste */
+			/* L'utilisateur est prÃ©sent dans la liste */
 			(*utilisateurs)->hd.coordonnees[routeur] = nouvelle_coordonnee;
 		else
-			/* L'utilisateur n'a pas encore été trouvé */
+			/* L'utilisateur n'a pas encore Ã©tÃ© trouvÃ© */
 			loc_maj_utilisateur(nom_utilisateur, routeur, nouvelle_coordonnee, &(*utilisateurs)->tl, nb_routeurs);
 	} else {
-		/* L'utilisateur n'est pas encore référencé, on l'ajoute */
+		/* L'utilisateur n'est pas encore rÃ©fÃ©rencÃ©, on l'ajoute */
 		loc utilisateur;
 		utilisateur.nom = malloc((strlen(nom_utilisateur) + 1) * sizeof(char));
 		strcpy(utilisateur.nom, nom_utilisateur);
@@ -111,14 +111,14 @@ void loc_maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coo
 }
 
 loc* loc_salle(char* nom_utilisateur, loc_list utilisateurs, loc_list references) {
-	/* On parcourt récursivement la liste des utilisateurs jusqu'à trouver celui que l'on veut localiser */
+	/* On parcourt rÃ©cursivement la liste des utilisateurs jusqu'Ã  trouver celui que l'on veut localiser */
 	if (!utilisateurs) {
-		printf("Erreur : l'utilisateur n'est pas référencé\n");
+		printf("Erreur : l'utilisateur n'est pas rÃ©fÃ©rencÃ©\n");
 		return NULL;
 	} else if (strcmp(utilisateurs->hd.nom, nom_utilisateur))
 		return loc_salle(nom_utilisateur, utilisateurs->tl, references);
 
-	/* On cherche la salle référencée dont les coordonnées normalisées sont les
+	/* On cherche la salle rÃ©fÃ©rencÃ©e dont les coordonnÃ©es normalisÃ©es sont les
 	 * plus proches de celles de l'utilisateur */
 	loc utilisateur = utilisateurs->hd;
 	int nb_routeurs = utilisateur.nombre_routeurs;
