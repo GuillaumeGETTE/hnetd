@@ -1,5 +1,5 @@
-#ifndef CALCUL_DISTANCE_RN_H_INCLUDED
-#define CALCUL_DISTANCE_RN_H_INCLUDED
+#pragma once
+
 #include "Structures.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,25 +8,31 @@
  * Initalise les liste references, utilisateurs et liste_routeurs,
  * et renvoie le nombre de routeurs.
  */
-int init(char* chemin_fichier, Liste* references, Liste* utilisateurs, char** liste_routeurs);
-
-double distance(double a[],double b[],int n);
-//Calcul des distances dans R^n ou a et b sont les tableaux des coordonnées
-
-void etallonage(char* nom_salle,double* coordonnees_salle, Liste* references, int nombre_routeurs);
-//Ajoute à la liste des valeurs de références (references) la mesure d'étallonage de la salle (la mesure ajoutée est normalisée).
+int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs, char** liste_routeurs);
 
 
-void maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coordonnee, Liste* utilisateurs, int n);
-//Met à jour la coordonnée de l'utilisateur pour le routeur passé en argument. Si ce dernier n'existe pas, il est créé et ajouté à la liste des utilisateurs.
+/*
+ * Ajoute à la liste des valeurs de références (references) la mesure d'étallonage de la salle (la mesure ajoutée est normalisée).
+ * 'nom_salle' n'est pas copié, seul le pointeur l'est.
+ */
+void loc_etallonage(char* nom_salle, double* coordonnees_salle, loc_list* references, int nombre_routeurs);
 
-char* salle(char*nom_utilisateur, Liste utilisateurs, Liste references);
-//Donne la salle la plus proche de l'utilisateur avec la distance de R^n
 
-double* normalizzzze(double* coordonnees, int n);
-//Normalise le tableau de coordonnées de R^n pour la norme 1
+/*
+ * Met à jour la coordonnée de l'utilisateur pour le routeur passé en argument.
+ * Si ce dernier n'existe pas, il est créé et ajouté à la liste des utilisateurs.
+ * Le nom est copié.
+ */
+void loc_maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coordonnee, loc_list* utilisateurs, int n);
 
-void maj_fichier_coordonnees(char* nom_du_fichier, Liste utilisateurs, Liste references);
-//Remplace le contenu du fichier par la liste des utilisateurs et leurs coordonnées.
+/*
+ * Renvoie la salle la plus proche de l'utilisateur avec la distance de R^n.
+ * Renvoie NULL si aucune salle n'a été trouvée, ou si l'utilisateur n'a pas été référencé.
+ */
+loc* loc_salle(char* nom_utilisateur, loc_list utilisateurs, loc_list references);
 
-#endif // CALCUL_DISTANCE_RN_H_INCLUDED
+
+/*
+ * Remplace le contenu du fichier par la liste des utilisateurs et leurs coordonnées.
+ */
+void loc_maj_fichier_coordonnees(char* nom_du_fichier, loc_list utilisateurs, loc_list references);
