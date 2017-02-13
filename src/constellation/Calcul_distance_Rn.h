@@ -8,7 +8,7 @@
  * Initalise les liste references, utilisateurs et liste_routeurs,
  * et renvoie le nombre de routeurs.
  */
-int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs, char** liste_routeurs);
+int loc_init(const char* chemin_fichier, loc_list* references, loc_list* utilisateurs, char** liste_routeurs);
 
 
 /*

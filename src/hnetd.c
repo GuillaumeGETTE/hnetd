@@ -19,7 +19,7 @@
 #include <syslog.h>
 #include <fcntl.h>
 
-#include "hncp_constellation.h"
+#include "constellation/hncp_constellation.h"
 #include "hnetd_time.h"
 #include "hncp_pa.h"
 #include "hncp_sd.h"
@@ -131,6 +131,7 @@ int main(__unused int argc, char *argv[])
 
 	// Register multicalls
 	hd_register_rpc();
+	hc_register_rpc();
 #ifdef DTLS
 	dncp_trust_register_multicall();
 #endif
@@ -491,7 +492,7 @@ int main(__unused int argc, char *argv[])
 
 	/* Init Constellation project */
 	system("grep -q mon0 /proc/net/dev || iw phy phy0 interface add mon0 type monitor; ifconfig mon0 up; radiotapFinder mon0");
-	if(!(hncp_constellation = hncp_constellation_create(h, "mon0"))) {
+	if(!(hncp_constellation = hncp_constellation_create(h, "mon0", true))) {
 		L_ERR("Unable to initialize Constellation");
 		return 68;
 	}

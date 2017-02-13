@@ -11,12 +11,16 @@
 #include "dncp_i.h"
 #include "dncp.h"
 #include "hncp_proto.h"
-#include "constellation_localization/Structures.h"
-#include "constellation_localization/Calcul_distance_Rn.h"
+#include "Structures.h"
+#include "Calcul_distance_Rn.h"
+
+#include <libubox/blobmsg_json.h>
+#include "platform.h"
 
 #define PACKET_BUFFER_SIZE 1000
 
 const char version[59] = "Ornithorynque 3.0";
+const char calibration_file[] = "/etc/config/caca_le_fichier_de_calibrage";
 
 typedef struct constellation_data {
 	char router_id[6];
@@ -33,7 +37,7 @@ struct data_list {
 
 typedef struct hncp_constellation_struct {
 	dncp dncp;
-  	dncp_subscriber_s subscriber;
+	dncp_subscriber_s subscriber;
 
 	/* Packet monitoring */
 	struct uloop_timeout monitor_timeout;
@@ -49,8 +53,14 @@ typedef struct hncp_constellation_struct {
 	int nb_routers;
 	loc_list areas;
 	loc_list users;
+
+	/* Auto-calibration */
+	char recorded_hwaddr[6];
+	int recording_number;
+	double *recorded_coords_sum;
 } *hc;
 
+static hc calibration_hc = NULL;
 
 /* DEBUG */
 static void fprintf_hwaddr(FILE* f, char* addr) {
@@ -115,8 +125,7 @@ static void publish_constellation_data(hc c) {
  * Read all wi-fi packets and publish TLVs containing transmission power of the
  * packets from each device the router can hear.
  */
-static void _monitor_timeout(struct uloop_timeout *t)
-{
+static void _monitor_timeout(struct uloop_timeout *t) {
 	hncp_constellation c = container_of(t, hncp_constellation_s, monitor_timeout);
 
 	/* Main loop, updating the power TLVs */
@@ -136,17 +145,17 @@ static void _monitor_timeout(struct uloop_timeout *t)
 	uloop_timeout_set(&c->monitor_timeout, MONITOR_TIMEOUT);
 }
 
+#include <string.h>
 /*
  * Callback function.
  * Do localization things... TODO To complete.
  */
 static void _tlv_change_callback(dncp_subscriber s, dncp_node n __attribute__((unused)), struct tlv_attr* tlv, bool add) {
-	/* DEBUG */
-	FILE* f = fopen("/tmp/hnet-log", "a");
+	hncp_constellation c = container_of(s, hncp_constellation_s, subscriber);
 	cd* data;
 	char user_id[7];
 
-	hncp_constellation c = container_of(s, hncp_constellation_s, subscriber);
+	FILE* f = fopen("/tmp/hnet-log", "a"); /* DEBUG */
 	switch (tlv_id(tlv)) {
 		case HNCP_T_CONSTELLATION:
 			if (add) {
@@ -155,21 +164,16 @@ static void _tlv_change_callback(dncp_subscriber s, dncp_node n __attribute__((u
 				user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
 				/* On trouve de quel routeur il s’agit FIXME pas cool */
 				int k;
-				for (k = 0 ; k < c->nb_routers ; ++k) {
-					if (!memcmp(c->routers + 6 * k, data->router_id, 6))
-						break;
-				}
+				for (k = 0 ; k < c->nb_routers && memcmp(c->routers + 6*k, data->router_id, 6) ; ++k);
 				if (k == c->nb_routers) {
-					/* Le routeur ne fait pas partis de ceux étudiés, ça ne devrait pas arriver… Que faire ? FIXME */
+					/* Le routeur ne fait pas parti du groude de routeurs utilisés */
 					/* DEBUG */
 					fprintf(f, "Unidentified router ");
 					fprintf_hwaddr(f, data->router_id);
-					/* END DEBUG */
 				} else {
 					loc_maj_utilisateur(user_id, k, data->power, &c->users, c->nb_routers);
 					/* DEBUG */
 					fprintf(f, "Router n°%d", k);
-					/* END DEBUG */
 				}
 				fprintf(f, " saw ");
 				fprintf_hwaddr(f, data->user_id);
@@ -187,25 +191,127 @@ static void _tlv_change_callback(dncp_subscriber s, dncp_node n __attribute__((u
  * TODO Do better…
  */
 static void _localization_timeout(struct uloop_timeout *t) {
-	FILE* f = fopen("/tmp/hnet-log", "a");
 	hncp_constellation c = container_of(t, hncp_constellation_s, localization_timeout);
 	char user_id[7];
+
+	FILE* f = fopen("/tmp/hnet-log", "a");
 	fprintf_hwaddr(f, c->hwaddr);
 	fprintf(f, " found:\n");
 
 	for (loc_list l = c->users ; l != NULL ; l = l->tl) {
 		memcpy(user_id, l->hd.nom, 6);
 		user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
-		/* END DEBUG */
+		/* DEBUG */
 		fprintf(f, "\t");
 		fprintf_hwaddr(f, user_id);
 		fprintf(f, " ===> %s\n", loc_salle(user_id, c->users, c->areas)->nom);
 	}
-	fclose(f);
+
+	/* automatic calibration */
+	/* TODO Prendre en compte le temps */
+	if (c == calibration_hc && c->recorded_coords_sum) {
+		loc_list l;
+		for (l = c->users ; l != NULL && memcmp(c->recorded_hwaddr, l->hd.nom, 6) ; l = l->tl);
+		if (l != NULL) {
+			for (int i = 0 ; i < l->hd.nombre_routeurs ; ++i)
+				c->recorded_coords_sum[i] += l->hd.coordonnees[i];
+			++c->recording_number;
+		}
+	}
+
 	uloop_timeout_set(&c->localization_timeout, LOCALIZATION_TIMEOUT);
 }
 
-hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
+static int hc_main(struct platform_rpc_method *method __attribute__((unused)), int argc, char* const argv[]) {
+	if (argc < 2) {
+		printf("Error: Expected an instruction\n");
+		return 69;
+	}
+
+	if (strcmp(argv[1], "rec")) {
+		if (argc >= 3) {
+			char hw_addr[6];
+			int read = sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+					hw_addr + 0, hw_addr + 1, hw_addr + 2,
+					hw_addr + 3, hw_addr + 4, hw_addr + 5);
+			if (read == 6) {
+
+				struct blob_buf b = {NULL, NULL, 0, NULL};
+				blob_buf_init(&b, 0);
+				blob_put(&b, 0, hw_addr, 6);
+
+				int r = platform_rpc_cli(argv[1], b.head);
+				if (!r)
+					printf("Recording began\n");
+				else if (r == 4)
+					printf("Error: recording didn't begin as expected\n");
+				return r;
+			}
+		}
+		printf("Error: Expected a valid hardware address as 2nd argument\n");
+	}
+
+	else if (strcmp(argv[1], "add")) {
+		if (argc >= 3) {
+			struct blob_buf b = {NULL, NULL, 0, NULL};
+			blob_buf_init(&b, 0);
+			blob_put_string(&b, 0, argv[2]);
+
+			int r = platform_rpc_cli(argv[1], b.head);
+			if (!r)
+				printf("Calibrage point added\n");
+			else if (r == 4)
+				printf("Error: No calibrage point found\n");
+			return r;
+		}
+		printf("Error: Expected the name of the calibrated area as 2nd argument\n");
+	}
+
+	return 69;
+}
+
+static int hc_rec_cb(struct platform_rpc_method *method __attribute__((unused)), const struct blob_attr *in, struct blob_buf *b) {
+	hc c = calibration_hc;
+	if (!c) {
+		if (c->recorded_coords_sum)
+			free(c->recorded_coords_sum);
+		memcpy(c->recorded_hwaddr, blob_data(in), 6);
+		c->recording_number = 0;
+		c->recorded_coords_sum = calloc(c->nb_routers, sizeof(double));
+		blobmsg_add_u32(b, "rec", 1);
+		return 0;
+	}
+	return 1;
+}
+
+/* TODO Unused b, est-ce que c’est grave ? */
+static int hc_add_cb(struct platform_rpc_method *method __attribute__((unused)), const struct blob_attr *in, struct blob_buf *b) {
+	hc c = calibration_hc;
+	if (c && c->recorded_coords_sum) {
+		FILE* cal_file = fopen(calibration_file, "a");
+		fprintf(cal_file, "\n%s ", blob_get_string(in));
+		for (int k = 0 ; k < c->nb_routers ; ++k)
+			fprintf(cal_file, "%lf ", c->recorded_coords_sum[k] / c->recording_number);
+		fclose(cal_file);
+		free(c->recorded_coords_sum);
+		c->recorded_coords_sum = NULL;
+		return 0;
+	}
+	return 1;
+}
+
+static struct platform_rpc_method hncp_rpc_constellation[3] = {
+	{.name = "constellation", .main = hc_main},
+	{.name = "rec-constellation", .cb = hc_rec_cb},
+	{.name = "add-constellation", .cb = hc_add_cb},
+};
+
+void hc_register_rpc() {
+	for (unsigned int k = 0 ; k < sizeof(hncp_rpc_constellation) ; ++k)
+		platform_rpc_register(hncp_rpc_constellation + k);
+}
+
+hncp_constellation hncp_constellation_create(hncp h, char* ifname, bool calibrate) {
 	/* Initialization */
 	hncp_constellation c;
 	if (!(c = calloc(1, sizeof(*c))))
@@ -213,8 +319,8 @@ hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
 
 	c->dncp = hncp_get_dncp(h);
 	c->monitor_timeout.cb = _monitor_timeout;
-	c->subscriber.tlv_change_cb = _tlv_change_callback;
 	c->localization_timeout.cb = _localization_timeout;
+	c->subscriber.tlv_change_cb = _tlv_change_callback;
 
 	/* Initialize power monitoring */
 	c->buffer_size = PACKET_BUFFER_SIZE;
@@ -233,14 +339,18 @@ hncp_constellation hncp_constellation_create(hncp h, char* ifname) {
 
 	/* Initialize localization */
 	/* FIXME changer le nom du fichier */
-	c->nb_routers = loc_init("/etc/config/caca_le_fichier_de_calibrage", &c->areas, &c->users, &c->routers);
+	c->nb_routers = loc_init(calibration_file, &c->areas, &c->users, &c->routers);
 	fprintf(f, "Number of routers: %d\n", c->nb_routers);
 	fclose(f);
 
+	/* Initialize interface */
+	if (calibrate && !calibration_hc)
+		calibration_hc = c;
+
 	/* Set the timeouts */
 	uloop_timeout_set(&c->monitor_timeout, MONITOR_TIMEOUT);
-	dncp_subscribe(c->dncp, &c->subscriber);
 	uloop_timeout_set(&c->localization_timeout, LOCALIZATION_TIMEOUT);
+	dncp_subscribe(c->dncp, &c->subscriber);
 
 	return c;
 }

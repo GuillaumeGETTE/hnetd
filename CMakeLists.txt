@@ -61,6 +61,7 @@ if (${EXTRA_LINK_DIR})
   link_directories(${EXTRA_LINK_DIR})
 endif (${EXTRA_LINK_DIR})
 
+install(CODE "execute_process(COMMAND ln -sf hnetd \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/sbin/hnet-constellation)")
 if(${BACKEND} MATCHES "openwrt")
   set(BACKEND_SOURCE "src/platform-openwrt.c")
   set(BACKEND_LINK "ubus")
@@ -80,7 +81,7 @@ endif(${DTLS})
 endif(${BACKEND} MATCHES "openwrt")
 
 # hnetd and it's various pieces
-add_library(L_CONST OBJECT src/hncp_constellation.c src/power_monitor.c src/constellation_localization/Calcul_distance_Rn.c src/constellation_localization/Structures.c)
+add_library(L_CONST OBJECT src/constellation/hncp_constellation.c src/constellation/power_monitor.c src/constellation/Calcul_distance_Rn.c src/constellation/Structures.c)
 set(CONST $<TARGET_OBJECTS:L_CONST>)
 add_library(L_HT OBJECT src/hnetd_time.c)
 set(HT $<TARGET_OBJECTS:L_HT>)

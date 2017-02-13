@@ -38,7 +38,7 @@ static void dBm_to_power_norm(double* dBm, double* power, int n) {
 		power[i] /= norme;
 }
 
-int loc_init(char* chemin_fichier, loc_list* references, loc_list* utilisateurs, char** liste_routeurs) {
+int loc_init(const char* chemin_fichier, loc_list* references, loc_list* utilisateurs, char** liste_routeurs) {
 	FILE* f;
 	int nb_routeurs, nb_salles;
 	char *routeurs;
@@ -117,6 +117,7 @@ loc* loc_salle(char* nom_utilisateur, loc_list utilisateurs, loc_list references
 		return NULL;
 	} else if (strcmp(utilisateurs->hd.nom, nom_utilisateur))
 		return loc_salle(nom_utilisateur, utilisateurs->tl, references);
+
 
 	/* On cherche la salle référencée dont les coordonnées normalisées sont les
 	 * plus proches de celles de l'utilisateur */

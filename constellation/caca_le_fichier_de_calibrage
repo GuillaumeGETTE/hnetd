@@ -1,5 +1,7 @@
-2 2
-4c:60:de:e4:b0:a6
+3 3 
 4c:60:de:e4:ae:f3
-Proche -35 -25
-Loin -25 -35
+4c:60:de:e4:b1:3f
+4c:60:de:e4:b0:a6
+Piece_constellation -22 -40 -40
+Piece_constellation -27 -38 -40
+Couloir -37 -31 -28
