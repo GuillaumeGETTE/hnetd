@@ -18,8 +18,9 @@
 #include "platform.h"
 
 #define PACKET_BUFFER_SIZE 1000
+#define TIME_LIMIT_SEEN 10 // Temps (en nombre d’appel à une publication des TLV) au dela duquel on vire un utilisateur qui n’est pas présent.
 
-const char version[59] = "Ornithorynque 3.0";
+const char version[59] = "Okapi 1";
 const char calibration_file[] = "/etc/config/caca_le_fichier_de_calibrage";
 
 typedef struct constellation_data {
@@ -30,10 +31,16 @@ typedef struct constellation_data {
 
 struct data_list {
 	struct data_list* next;
-	dncp_tlv tlv;
-	struct constellation_data data;
-	bool to_update;
+	char user_id[6]; // Le nom de l’utilisateur concerné
+	dncp_tlv tlv; // La tlv qui s’occupe de lui
+	int nb_packet; // Le nombre de packets qu’on a vu depuis la dernière publication
+	struct sorted_power_list {
+		struct sorted_power_list* next;
+		float value;
+	}* power_list; // La liste des puissances vues pour cet utilisateur
+	int not_seen_since; // Temps depuis lequel on l’a pas vu sur le réseau
 };
+
 
 typedef struct hncp_constellation_struct {
 	dncp dncp;
@@ -90,33 +97,69 @@ static int get_hwaddr(char* addr, char* ifname) {
  * Update the data_list of 'c' with 'data'.
  * To publish all the gathered data, use 'publish_constellation_data(c)'.
  */
-static void update_constellation_data(hc c, cd* data) {
+/* TODO : make this better, try to sort this */
+static void update_constellation_data(hc c, char user_id[6], float power) {
 	struct data_list** l = &c->data_list;
-	while (*l != NULL && memcmp((*l)->data.user_id, data->user_id, 6) != 0) {
+	while (*l != NULL && memcmp((*l)->user_id, user_id, 6))
 		l = &(*l)->next;
-	}
 	if (*l == NULL) {
-		*l = malloc(sizeof(struct data_list));
-		(*l)->next = NULL;
-		(*l)->tlv = NULL;
+		*l = calloc(1, sizeof(struct data_list));
+		memcpy(&(*l)->user_id, user_id, 6);
 	}
-	memcpy(&(*l)->data, data, sizeof(*data));
-	(*l)->to_update = 1;
+	struct data_list* d = *l;
+
+	++d->nb_packet;
+	struct sorted_power_list** pl = &d->power_list;
+	while (*pl != NULL && (*pl)->value < power)
+		pl = &(*pl)->next;
+	struct sorted_power_list* inserted_value = malloc(sizeof(struct sorted_power_list));
+	inserted_value->value = power;
+	inserted_value->next = (*pl)->next;
+	(*pl)->next = inserted_value;
 }
 
 /*
  * Publish all the needed TLV to update the monitoring data to homenet.
  */
 static void publish_constellation_data(hc c) {
-	struct data_list* l = c->data_list;
-	while (l != NULL) {
-		if (l->to_update) {
-			if (l->tlv != NULL)
-				dncp_remove_tlv(c->dncp, l->tlv);
-			l->tlv = dncp_add_tlv(c->dncp, HNCP_T_CONSTELLATION, &l->data, sizeof(l->data), 0);
-			l->to_update = 0;
+	struct constellation_data data;
+	memcpy(data.router_id, c->hwaddr, 6);
+	for (struct data_list** l = &c->data_list ; *l ; l = &(*l)->next) {
+		struct data_list* d = *l;
+		int n = d->nb_packet;
+		if (n) {
+			memcpy(data.user_id, d->user_id, 6);
+
+			/* Let's find the power value to publish, and free all this.
+			 * We'll take the median */
+			struct sorted_power_list* pl = d->power_list;
+			for (int k = 0 ; k < (n-1) / 2 ; ++k) {
+				struct sorted_power_list* next = pl->next;
+				free(pl);
+				pl = next;
+			}
+			data.power = pl->value;
+			for (int k = (n-1) / 2 ; k < n ; ++k) {
+				struct sorted_power_list* next = pl->next;
+				free(pl);
+				pl = next;
+			}
+			d->nb_packet = 0;
+			d->not_seen_since = 0;
+
+			if (d->tlv)
+				dncp_remove_tlv(c->dncp, d->tlv);
+			d->tlv = dncp_add_tlv(c->dncp, HNCP_T_CONSTELLATION, &data, sizeof(data), 0);
+		} else {
+			/* If it's been a long time we didn't see it, remove it */
+			if (++d->not_seen_since > TIME_LIMIT_SEEN) {
+				if (d->tlv)
+					dncp_remove_tlv(c->dncp, d->tlv);
+				struct data_list* to_remove = *l;
+				*l = (*l)->next;
+				free(to_remove);
+			}
 		}
-		l = l->next;
 	}
 }
 
@@ -136,9 +179,7 @@ static void _monitor_timeout(struct uloop_timeout *t) {
 	while ((retv = power_monitoring_next(&md, c->monitor_socket, c->packet_buffer, c->buffer_size)) != -1) {
 		if (retv == 1) /* The packet didn't contain expected information */
 			continue;
-		memcpy(data.user_id, md.hwaddr, 6);
-		data.power = md.power;
-		update_constellation_data(c, &data);
+		update_constellation_data(c, md.hwaddr, md.power);
 	}
 	publish_constellation_data(c);
 
@@ -223,6 +264,8 @@ static void _localization_timeout(struct uloop_timeout *t) {
 }
 
 static int hc_main(struct platform_rpc_method *method __attribute__((unused)), int argc, char* const argv[]) {
+	/* DEBUG */
+	printf("Je suis là 883\n");
 	if (argc < 2) {
 		printf("Error: Expected an instruction\n");
 		return 69;
