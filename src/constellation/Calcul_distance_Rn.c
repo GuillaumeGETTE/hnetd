@@ -104,7 +104,7 @@ void loc_maj_utilisateur(char* nom_utilisateur, int routeur, double nouvelle_coo
 		utilisateur.coordonnees = malloc(nb_routeurs * sizeof(double));
 		int i;
 		for (i = 0 ; i < nb_routeurs ; i++)
-			utilisateur.coordonnees[i] = -10000.;
+			utilisateur.coordonnees[i] = COORD_MIN_VALUE;
 		utilisateur.coordonnees[routeur] = nouvelle_coordonnee;
 		add(utilisateur, utilisateurs);
 	}

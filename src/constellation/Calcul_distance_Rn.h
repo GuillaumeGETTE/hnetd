@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define COORD_MIN_VALUE -100000.
 /*
  * Initalise les liste references, utilisateurs et liste_routeurs,
  * et renvoie le nombre de routeurs.

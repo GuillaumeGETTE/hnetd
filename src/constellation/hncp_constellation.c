@@ -210,27 +210,26 @@ static void _tlv_change_callback(dncp_subscriber s, dncp_node n __attribute__((u
 	FILE* f = fopen("/tmp/hnet-log", "a"); /* DEBUG */
 	switch (tlv_id(tlv)) {
 		case HNCP_T_CONSTELLATION:
-			if (add) {
-				data = (cd*) tlv->data;
-				hwacpy(user_id, data->user_id);
-				user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
-				/* On trouve de quel routeur il s’agit FIXME pas cool */
-				int k;
-				for (k = 0 ; k < c->nb_routers && hwacmp(c->routers + 6*k, data->router_id) ; ++k);
-				if (k == c->nb_routers) {
-					/* Le routeur ne fait pas parti du groude de routeurs utilisés */
-					/* DEBUG */
-					fprintf(f, "Unidentified router ");
-					fprintf_hwaddr(f, data->router_id);
-				} else {
-					loc_maj_utilisateur(user_id, k, data->power, &c->users, c->nb_routers);
-					/* DEBUG */
-					fprintf(f, "Router n°%d", k);
-				}
-				fprintf(f, " saw ");
-				fprintf_hwaddr(f, data->user_id);
-				fprintf(f, " with power %.1f\n", data->power);
+			data = (cd*) tlv->data;
+			hwacpy(user_id, data->user_id);
+			user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
+			/* On trouve de quel routeur il s’agit FIXME pas cool */
+			int k;
+			for (k = 0 ; k < c->nb_routers && hwacmp(c->routers + 6*k, data->router_id) ; ++k);
+			if (k == c->nb_routers) {
+				/* Le routeur ne fait pas parti du groude de routeurs utilisés */
+				/* DEBUG */
+				fprintf(f, "Unidentified router ");
+				fprintf_hwaddr(f, data->router_id);
+			} else {
+				float power = add ? data->power : COORD_MIN_VALUE;
+				loc_maj_utilisateur(user_id, k, data->power, &c->users, c->nb_routers);
+				/* DEBUG */
+				fprintf(f, "Router n°%d", k);
 			}
+			fprintf(f, " saw ");
+			fprintf_hwaddr(f, data->user_id);
+			fprintf(f, " with power %.1f\n", data->power);
 			break;
 		default:
 			break;
