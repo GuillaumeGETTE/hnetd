@@ -259,6 +259,26 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 		printf("Error: Expected the name of the calibrated area as 2nd argument\n");
 	}
 
+	else if (strcmp(argv[1], "print")) {
+		printf("Je suis là 340\n");
+		if (argc >= 3) {
+			char hw_addr[6];
+			int read = sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+					hw_addr + 0, hw_addr + 1, hw_addr + 2,
+					hw_addr + 3, hw_addr + 4, hw_addr + 5);
+			if (read == 6) {
+				struct blob_buf b = {NULL, NULL, 0, NULL};
+				blob_buf_init(&b, 0);
+				blob_put(&b, 0, hw_addr, 6);
+				int r = platform_rpc_cli("print-constellation", b.head);
+				if (r == 4)
+					printf("Error: recording didn't begin as expected\n");
+				return r;
+			}
+		}
+		printf("Error: Expected a valid hardware address as 2nd argument\n");
+	}
+
 	return 69;
 }
 
@@ -309,12 +329,33 @@ static int hc_add_cb(struct platform_rpc_method *method __attribute__((unused)),
 	}
 }
 
+/* TODO Unused b, est-ce que c’est grave ? */
+static int hc_print_cb(struct platform_rpc_method *method __attribute__((unused)), const struct blob_attr *in, struct blob_buf *b) {
+	hc c = calibration_hc;
+	if (c) {
+		loc_list l;
+		char user_id[7];
+		user_id[6] = 0;
+		memcpy(user_id, blob_data(in), 6);
+		for (l = c->users ; l != NULL && memcmp(c->recorded_hwaddr, user_id, 6) ; l = l->tl);
+		if (l != NULL) {
+			blobmsg_add_u32(b, "nb_routers", c->nb_routers);
+			for (int i = 0 ; i < c->nb_routers ; ++i)
+				blobmsg_add_u32(b, "coord", (unsigned int) (-l->hd.coordonnees[i]));
+			blobmsg_add_string(b, "salle", loc_salle(user_id, c->users, c->areas, c->nb_routers)->nom);
+			return 0;
+		}
+	}
+	return 1;
+}
+
 #define NB_RPC_METHOD 3
 
 static struct platform_rpc_method hncp_rpc_constellation[NB_RPC_METHOD] = {
 	{.name = "constellation", .main = hc_main},
 	{.name = "rec-constellation", .cb = hc_rec_cb},
 	{.name = "add-constellation", .cb = hc_add_cb},
+	{.name = "print-constellation", .cb = hc_print_cb},
 };
 
 void hc_register_rpc() {
