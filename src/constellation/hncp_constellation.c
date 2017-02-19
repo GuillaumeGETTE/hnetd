@@ -240,7 +240,7 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 				blob_buf_init(&b, 0);
 				blob_put(&b, 0, hw_addr, 6);
 
-				int r = platform_rpc_cli(argv[1], b.head);
+				int r = platform_rpc_cli("rec-constellation", b.head);
 				if (!r)
 					printf("Recording began\n");
 				else if (r == 4)
@@ -257,7 +257,7 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 			blob_buf_init(&b, 0);
 			blob_put_string(&b, 0, argv[2]);
 
-			int r = platform_rpc_cli(argv[1], b.head);
+			int r = platform_rpc_cli("add-constellation", b.head);
 			if (!r)
 				printf("Calibrage point added\n");
 			else if (r == 4)
