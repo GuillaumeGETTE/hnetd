@@ -228,7 +228,7 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 		return 69;
 	}
 
-	if (strcmp(argv[1], "rec")) {
+	if (!strcmp(argv[1], "rec")) {
 		if (argc >= 3) {
 			char hw_addr[6];
 			int read = sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -241,27 +241,19 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 				blob_put(&b, 0, hw_addr, 6);
 
 				int r = platform_rpc_cli("rec-constellation", b.head);
-				if (!r)
-					printf("Recording began\n");
-				else if (r == 4)
-					printf("Error: recording didn't begin as expected\n");
 				return r;
 			}
 		}
 		printf("Error: Expected a valid hardware address as 2nd argument\n");
 	}
 
-	else if (strcmp(argv[1], "add")) {
+	else if (!strcmp(argv[1], "add")) {
 		if (argc >= 3) {
 			struct blob_buf b = {NULL, NULL, 0, NULL};
 			blob_buf_init(&b, 0);
 			blob_put_string(&b, 0, argv[2]);
 
 			int r = platform_rpc_cli("add-constellation", b.head);
-			if (!r)
-				printf("Calibrage point added\n");
-			else if (r == 4)
-				printf("Error: No calibrage point found\n");
 			return r;
 		}
 		printf("Error: Expected the name of the calibrated area as 2nd argument\n");
@@ -272,42 +264,61 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 
 static int hc_rec_cb(struct platform_rpc_method *method __attribute__((unused)), const struct blob_attr *in, struct blob_buf *b) {
 	hc c = calibration_hc;
-	if (!c) {
+	if (c) {
 		if (c->recorded_coords_sum)
 			free(c->recorded_coords_sum);
-		memcpy(c->recorded_hwaddr, blob_data(in), 6);
+		/* FIXME C’est pas normal ce +4 */
+		memcpy(c->recorded_hwaddr, blob_data(in) + 4, 6);
 		c->recording_number = 0;
-		c->recorded_coords_sum = calloc(c->nb_routers, sizeof(double));
-		blobmsg_add_u32(b, "rec", 1);
+		c->recorded_coords_sum = malloc(c->nb_routers * sizeof(double));
+		for (int k = 0 ; k < c->nb_routers ; ++k)
+			c->recorded_coords_sum[k] = 0;
 		return 0;
+	} else {
+		blobmsg_add_string(b, "Error", "No calibrage structure prepared.");
+		return 1;
 	}
-	return 1;
 }
 
 /* TODO Unused b, est-ce que c’est grave ? */
 static int hc_add_cb(struct platform_rpc_method *method __attribute__((unused)), const struct blob_attr *in, struct blob_buf *b) {
 	hc c = calibration_hc;
-	if (c && c->recorded_coords_sum) {
-		FILE* cal_file = fopen(calibration_file, "a");
-		fprintf(cal_file, "\n%s ", blob_get_string(in));
-		for (int k = 0 ; k < c->nb_routers ; ++k)
-			fprintf(cal_file, "%lf ", c->recorded_coords_sum[k] / c->recording_number);
-		fclose(cal_file);
-		free(c->recorded_coords_sum);
-		c->recorded_coords_sum = NULL;
-		return 0;
+	if (c) {
+		if (c->recorded_coords_sum) {
+			FILE* cal_file = fopen(calibration_file, "a");
+			/* FIXME C’est pas normal ce +4 */
+			fprintf(cal_file, "%s ", 4 + blob_get_string(in));
+			if (!c->recording_number) {
+				blobmsg_add_string(b, "Error", "Not enough information recorded.");
+				return 1;
+			}
+			for (int k = 0 ; k < c->nb_routers ; ++k)
+				fprintf(cal_file, "%lf ", c->recorded_coords_sum[k] / c->recording_number);
+			fprintf(cal_file, "\n");
+			fclose(cal_file);
+			free(c->recorded_coords_sum);
+			c->recorded_coords_sum = NULL;
+			return 0;
+		} else {
+			blobmsg_add_string(b, "Error", "No information recorded. Use hncp_constellation rec 'hwaddr'.");
+			return 1;
+		}
+	} else {
+		blobmsg_add_string(b, "Error", "No calibrage structure prepared.");
+		return 1;
 	}
-	return 1;
 }
 
-static struct platform_rpc_method hncp_rpc_constellation[3] = {
+#define NB_RPC_METHOD 3
+
+static struct platform_rpc_method hncp_rpc_constellation[NB_RPC_METHOD] = {
 	{.name = "constellation", .main = hc_main},
 	{.name = "rec-constellation", .cb = hc_rec_cb},
 	{.name = "add-constellation", .cb = hc_add_cb},
 };
 
 void hc_register_rpc() {
-	for (unsigned int k = 0 ; k < sizeof(hncp_rpc_constellation) ; ++k)
+	for (unsigned int k = 0 ; k < NB_RPC_METHOD ; ++k)
 		platform_rpc_register(hncp_rpc_constellation + k);
 }
 

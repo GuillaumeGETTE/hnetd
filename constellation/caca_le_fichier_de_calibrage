@@ -1,7 +1,8 @@
-3 3 
+3 4
 4c:60:de:e4:ae:f3
 4c:60:de:e4:b1:3f
 4c:60:de:e4:b0:a6
-Piece_constellation -22 -40 -40
-Piece_constellation -27 -38 -40
-Couloir -37 -31 -28
+Piece_constellation_a -48 -42 -34
+Piece_constellation_b -46 -42 -33
+Couloir_a -36 -35 -41
+Couloir_b -37 -43 -52
