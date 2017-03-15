@@ -259,8 +259,7 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 		printf("Error: Expected the name of the calibrated area as 2nd argument\n");
 	}
 
-	else if (strcmp(argv[1], "print")) {
-		printf("Je suis là 340\n");
+	else if (!strcmp(argv[1], "print")) {
 		if (argc >= 3) {
 			char hw_addr[6];
 			int read = sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -271,8 +270,6 @@ static int hc_main(struct platform_rpc_method *method __attribute__((unused)), i
 				blob_buf_init(&b, 0);
 				blob_put(&b, 0, hw_addr, 6);
 				int r = platform_rpc_cli("print-constellation", b.head);
-				if (r == 4)
-					printf("Error: recording didn't begin as expected\n");
 				return r;
 			}
 		}
@@ -336,20 +333,25 @@ static int hc_print_cb(struct platform_rpc_method *method __attribute__((unused)
 		loc_list l;
 		char user_id[7];
 		user_id[6] = 0;
-		memcpy(user_id, blob_data(in), 6);
-		for (l = c->users ; l != NULL && memcmp(c->recorded_hwaddr, user_id, 6) ; l = l->tl);
+		/* FIXME C’est pas normal ce +4 */
+		memcpy(user_id, blob_data(in) + 4, 6);
+		for (l = c->users ; l != NULL && memcmp(l->hd.nom, user_id, 6) ; l = l->tl);
 		if (l != NULL) {
 			blobmsg_add_u32(b, "nb_routers", c->nb_routers);
+			struct blob_buf array = {NULL, NULL, 0, NULL};
+			blob_buf_init(&array, BLOBMSG_TYPE_ARRAY);
 			for (int i = 0 ; i < c->nb_routers ; ++i)
-				blobmsg_add_u32(b, "coord", (unsigned int) (-l->hd.coordonnees[i]));
-			blobmsg_add_string(b, "salle", loc_salle(user_id, c->users, c->areas, c->nb_routers)->nom);
-			return 0;
+				blobmsg_add_u32(&array, NULL, (unsigned int) (-l->hd.coordonnees[i]));
+			blobmsg_add_field(b, BLOBMSG_TYPE_ARRAY, "coordonnees", blobmsg_data(array.head), blobmsg_data_len(array.head));
+			blob_buf_free(&array);
+			blobmsg_add_string(b, "salle", loc_salle(user_id, c->users, c->areas)->nom);
+			return 1;
 		}
 	}
-	return 1;
+	return 0;
 }
 
-#define NB_RPC_METHOD 3
+#define NB_RPC_METHOD 4
 
 static struct platform_rpc_method hncp_rpc_constellation[NB_RPC_METHOD] = {
 	{.name = "constellation", .main = hc_main},
