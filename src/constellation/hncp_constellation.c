@@ -75,6 +75,14 @@ static void fprintf_hwaddr(FILE* f, char* addr) {
 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
 
+static inline char* hwacpy(char* dest, char* src) {
+	return memcpy(dest, src, 6);
+}
+
+static inline int hwacmp(char* s1, char* s2) {
+	return memcmp(s1, s2, 6);
+}
+
 /*
  * Set 'addr' to the hardware address of the router on the interface ifname.
  * Return 0 if ok, -1 otherwise.
@@ -89,7 +97,7 @@ static int get_hwaddr(char* addr, char* ifname) {
 	if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1)
 		return -1;
 	close(fd);
-	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
+	hwacpy(addr, ifr.ifr_hwaddr.sa_data);
 	return 0;
 }
 
@@ -100,22 +108,24 @@ static int get_hwaddr(char* addr, char* ifname) {
 /* TODO : make this better, try to sort this */
 static void update_constellation_data(hc c, char user_id[6], float power) {
 	struct data_list** l = &c->data_list;
-	while (*l != NULL && memcmp((*l)->user_id, user_id, 6))
+	while (*l != NULL && hwacmp((*l)->user_id, user_id))
 		l = &(*l)->next;
 	if (*l == NULL) {
 		*l = calloc(1, sizeof(struct data_list));
-		memcpy(&(*l)->user_id, user_id, 6);
+		hwacpy((*l)->user_id, user_id);
 	}
 	struct data_list* d = *l;
 
 	++d->nb_packet;
 	struct sorted_power_list** pl = &d->power_list;
-	while (*pl != NULL && (*pl)->value < power)
+	while (*pl != NULL && (*pl)->value < power) {
 		pl = &(*pl)->next;
+	}
 	struct sorted_power_list* inserted_value = malloc(sizeof(struct sorted_power_list));
+
 	inserted_value->value = power;
-	inserted_value->next = (*pl)->next;
-	(*pl)->next = inserted_value;
+	inserted_value->next = *pl;
+	*pl = inserted_value;
 }
 
 /*
@@ -123,12 +133,12 @@ static void update_constellation_data(hc c, char user_id[6], float power) {
  */
 static void publish_constellation_data(hc c) {
 	struct constellation_data data;
-	memcpy(data.router_id, c->hwaddr, 6);
+	hwacpy(data.router_id, c->hwaddr);
 	for (struct data_list** l = &c->data_list ; *l ; l = &(*l)->next) {
 		struct data_list* d = *l;
 		int n = d->nb_packet;
 		if (n) {
-			memcpy(data.user_id, d->user_id, 6);
+			hwacpy(data.user_id, d->user_id);
 
 			/* Let's find the power value to publish, and free all this.
 			 * We'll take the median */
@@ -146,6 +156,7 @@ static void publish_constellation_data(hc c) {
 			}
 			d->nb_packet = 0;
 			d->not_seen_since = 0;
+			d->power_list = NULL;
 
 			if (d->tlv)
 				dncp_remove_tlv(c->dncp, d->tlv);
@@ -174,7 +185,7 @@ static void _monitor_timeout(struct uloop_timeout *t) {
 	/* Main loop, updating the power TLVs */
 	struct monitored_data_struct md;
 	cd data;
-	memcpy(data.router_id, c->hwaddr, 6);
+	hwacpy(data.router_id, c->hwaddr);
 	int retv;
 	while ((retv = power_monitoring_next(&md, c->monitor_socket, c->packet_buffer, c->buffer_size)) != -1) {
 		if (retv == 1) /* The packet didn't contain expected information */
@@ -201,11 +212,11 @@ static void _tlv_change_callback(dncp_subscriber s, dncp_node n __attribute__((u
 		case HNCP_T_CONSTELLATION:
 			if (add) {
 				data = (cd*) tlv->data;
-				memcpy(user_id, data->user_id, 6);
+				hwacpy(user_id, data->user_id);
 				user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
 				/* On trouve de quel routeur il s’agit FIXME pas cool */
 				int k;
-				for (k = 0 ; k < c->nb_routers && memcmp(c->routers + 6*k, data->router_id, 6) ; ++k);
+				for (k = 0 ; k < c->nb_routers && hwacmp(c->routers + 6*k, data->router_id) ; ++k);
 				if (k == c->nb_routers) {
 					/* Le routeur ne fait pas parti du groude de routeurs utilisés */
 					/* DEBUG */
@@ -240,7 +251,7 @@ static void _localization_timeout(struct uloop_timeout *t) {
 	fprintf(f, " found:\n");
 
 	for (loc_list l = c->users ; l != NULL ; l = l->tl) {
-		memcpy(user_id, l->hd.nom, 6);
+		hwacpy(user_id, l->hd.nom);
 		user_id[6] = 0; /* FIXME Il ne faut pas utiliser ça comme id des routeurs */
 		/* DEBUG */
 		fprintf(f, "\t");
@@ -252,7 +263,7 @@ static void _localization_timeout(struct uloop_timeout *t) {
 	/* TODO Prendre en compte le temps */
 	if (c == calibration_hc && c->recorded_coords_sum) {
 		loc_list l;
-		for (l = c->users ; l != NULL && memcmp(c->recorded_hwaddr, l->hd.nom, 6) ; l = l->tl);
+		for (l = c->users ; l != NULL && hwacmp(c->recorded_hwaddr, l->hd.nom) ; l = l->tl);
 		if (l != NULL) {
 			for (int i = 0 ; i < l->hd.nombre_routeurs ; ++i)
 				c->recorded_coords_sum[i] += l->hd.coordonnees[i];
@@ -260,12 +271,12 @@ static void _localization_timeout(struct uloop_timeout *t) {
 		}
 	}
 
+	fclose(f);
+
 	uloop_timeout_set(&c->localization_timeout, LOCALIZATION_TIMEOUT);
 }
 
 static int hc_main(struct platform_rpc_method *method __attribute__((unused)), int argc, char* const argv[]) {
-	/* DEBUG */
-	printf("Je suis là 883\n");
 	if (argc < 2) {
 		printf("Error: Expected an instruction\n");
 		return 69;
@@ -328,7 +339,7 @@ static int hc_rec_cb(struct platform_rpc_method *method __attribute__((unused)),
 		if (c->recorded_coords_sum)
 			free(c->recorded_coords_sum);
 		/* FIXME C’est pas normal ce +4 */
-		memcpy(c->recorded_hwaddr, blob_data(in) + 4, 6);
+		hwacpy(c->recorded_hwaddr, blob_data(in) + 4);
 		c->recording_number = 0;
 		c->recorded_coords_sum = malloc(c->nb_routers * sizeof(double));
 		for (int k = 0 ; k < c->nb_routers ; ++k)
@@ -377,8 +388,8 @@ static int hc_print_cb(struct platform_rpc_method *method __attribute__((unused)
 		char user_id[7];
 		user_id[6] = 0;
 		/* FIXME C’est pas normal ce +4 */
-		memcpy(user_id, blob_data(in) + 4, 6);
-		for (l = c->users ; l != NULL && memcmp(l->hd.nom, user_id, 6) ; l = l->tl);
+		hwacpy(user_id, blob_data(in) + 4);
+		for (l = c->users ; l != NULL && hwacmp(l->hd.nom, user_id) ; l = l->tl);
 		if (l != NULL) {
 			blobmsg_add_u32(b, "nb_routers", c->nb_routers);
 			struct blob_buf array = {NULL, NULL, 0, NULL};

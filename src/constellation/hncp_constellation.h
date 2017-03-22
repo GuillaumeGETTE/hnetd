@@ -8,7 +8,6 @@
 
 #define LOCALIZATION_TIMEOUT 3000
 #define MONITOR_TIMEOUT 3000
-#define INTERFACE_TIMEOUT 1000
 
 typedef struct hncp_constellation_struct hncp_constellation_s, *hncp_constellation;
 
