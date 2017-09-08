@@ -20,8 +20,8 @@
 #define PACKET_BUFFER_SIZE 1000
 #define TIME_LIMIT_SEEN 10 // Temps (en nombre d’appel à une publication des TLV) au dela duquel on vire un utilisateur qui n’est pas présent.
 
-const char version[59] = "Okapi 1";
-const char calibration_file[] = "/etc/config/caca_le_fichier_de_calibrage";
+const char version[59] = "Okapi 2";
+const char calibration_file[] = "/etc/config/constellation.conf";
 
 typedef struct constellation_data {
 	char router_id[6];
